@@ -4,6 +4,6 @@
 -D hxnodejs-no-version-warning
 -D analyzer-optimize
 -lib hxnodejs
--js bin/lime-vscode.js
+-js bin/hxp-vscode.js
 -dce full
--main lime.extension.Main
+-main hxp.extension.Main

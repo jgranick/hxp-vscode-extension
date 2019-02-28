@@ -1,4 +1,4 @@
-package lime.extension;
+package hxp.extension;
 
 import js.node.Buffer;
 import js.node.ChildProcess;
@@ -8,7 +8,7 @@ import haxe.DynamicAccess;
 import Vscode.*;
 import vscode.*;
 
-using lime.extension.ArrayHelper;
+using hxp.extension.ArrayHelper;
 using Lambda;
 
 class Main
@@ -17,17 +17,14 @@ class Main
 
 	private var buildConfigItems:Array<BuildConfigItem>;
 	private var context:ExtensionContext;
-	private var displayArgumentsProvider:LimeDisplayArgumentsProvider;
+	private var displayArgumentsProvider:HXPDisplayArgumentsProvider;
 	private var disposables:Array<{function dispose():Void;}>;
 	private var editTargetFlagsItem:StatusBarItem;
-	private var hasProjectFile:Bool;
 	private var initialized:Bool;
 	private var isProviderActive:Bool;
-	private var selectBuildConfigItem:StatusBarItem;
-	private var selectTargetItem:StatusBarItem;
 	private var targetItems:Array<TargetItem>;
 	private var haxeEnvironment:DynamicAccess<String>;
-	private var limeExecutable:String;
+	private var hxpExecutable:String;
 
 	public function new(context:ExtensionContext)
 	{
@@ -37,63 +34,17 @@ class Main
 		refresh();
 	}
 
-	private function checkHasProjectFile():Void
-	{
-		hasProjectFile = false;
-
-		if (getProjectFile() != "")
-		{
-			hasProjectFile = true;
-		}
-
-		if (!hasProjectFile)
-		{
-			// TODO: multi-folder support
-
-			var wsFolder = if (workspace.workspaceFolders == null) null else workspace.workspaceFolders[0];
-			var rootPath = wsFolder.uri.fsPath;
-
-			if (rootPath != null)
-			{
-				// TODO: support custom project file references
-
-				var files = ["project.xml", "Project.xml", "project.hxp", "project.lime"];
-
-				for (file in files)
-				{
-					if (FileSystem.exists(rootPath + "/" + file))
-					{
-						hasProjectFile = true;
-						break;
-					}
-				}
-			}
-		}
-	}
-
 	private function construct():Void
 	{
 		disposables = [];
 
-		selectTargetItem = window.createStatusBarItem(Left, 9);
-		selectTargetItem.tooltip = "Select Target";
-		selectTargetItem.command = "lime.selectTarget";
-		disposables.push(selectTargetItem);
-
-		selectBuildConfigItem = window.createStatusBarItem(Left, 8);
-		selectBuildConfigItem.tooltip = "Select Build Configuration";
-		selectBuildConfigItem.command = "lime.selectBuildConfig";
-		disposables.push(selectBuildConfigItem);
-
 		editTargetFlagsItem = window.createStatusBarItem(Left, 7);
-		editTargetFlagsItem.command = "lime.editTargetFlags";
+		editTargetFlagsItem.command = "hxp.editTargetFlags";
 		disposables.push(editTargetFlagsItem);
 
-		disposables.push(commands.registerCommand("lime.selectTarget", selectTargetItem_onCommand));
-		disposables.push(commands.registerCommand("lime.selectBuildConfig", selectBuildConfigItem_onCommand));
-		disposables.push(commands.registerCommand("lime.editTargetFlags", editTargetFlagsItem_onCommand));
+		disposables.push(commands.registerCommand("hxp.editTargetFlags", editTargetFlagsItem_onCommand));
 
-		disposables.push(tasks.registerTaskProvider("lime", this));
+		disposables.push(tasks.registerTaskProvider("hxp", this));
 	}
 
 	private function deconstruct():Void
@@ -108,8 +59,6 @@ class Main
 			disposable.dispose();
 		}
 
-		selectTargetItem = null;
-		selectBuildConfigItem = null;
 		editTargetFlagsItem = null;
 
 		disposables = null;
@@ -120,7 +69,7 @@ class Main
 	{
 		var api:Vshaxe = getVshaxe();
 
-		displayArgumentsProvider = new LimeDisplayArgumentsProvider(api, function(isProviderActive)
+		displayArgumentsProvider = new HXPDisplayArgumentsProvider(api, function(isProviderActive)
 		{
 			this.isProviderActive = isProviderActive;
 			refresh();
@@ -132,7 +81,7 @@ class Main
 		}
 		else
 		{
-			api.registerDisplayArgumentsProvider("Lime", displayArgumentsProvider);
+			api.registerDisplayArgumentsProvider("HXP", displayArgumentsProvider);
 		}
 	}
 
@@ -143,13 +92,13 @@ class Main
 
 	private function createTask(description:String, command:String, ?group:TaskGroup)
 	{
-		var definition:LimeTaskDefinition =
+		var definition:HXPTaskDefinition =
 			{
-				type: "lime",
+				type: "hxp",
 				command: command
 			}
 
-		// var task = new Task (definition, description, "Lime");
+		// var task = new Task (definition, description, "HXP");
 		var args = getCommandArguments(command);
 		var name = args.join(" ");
 
@@ -161,9 +110,10 @@ class Main
 			args.push(Std.string(displayPort));
 		}
 
-		var task = new Task(definition, TaskScope.Workspace, name, "lime");
+		var task = new Task(definition, TaskScope.Workspace, name, "hxp");
 
-		task.execution = new ShellExecution(limeExecutable + " " + args.join(" "), {cwd: workspace.workspaceFolders[0].uri.fsPath, env: haxeEnvironment});
+		task.execution = new ShellExecution(hxpExecutable + " " + args.join(" "),
+			{cwd: workspace.workspaceFolders[0].uri.fsPath, env: haxeEnvironment});
 
 		if (group != null)
 		{
@@ -188,24 +138,24 @@ class Main
 	public function getBuildConfigFlags():String
 	{
 		var defaultFlags = "";
-		var defaultBuildConfigLabel = workspace.getConfiguration("lime").get("defaultBuildConfiguration", "Release");
+		var defaultBuildConfigLabel = workspace.getConfiguration("hxp").get("defaultBuildConfiguration", "Release");
 		var defaultBuildConfig = buildConfigItems.find(function(item) return item.label == defaultBuildConfigLabel);
 		if (defaultBuildConfig != null)
 		{
 			defaultFlags = defaultBuildConfig.flags;
 		}
 
-		return context.workspaceState.get("lime.buildConfigFlags", defaultFlags);
+		return context.workspaceState.get("hxp.buildConfigFlags", defaultFlags);
 	}
 
 	private function getExecutable():String
 	{
-		var executable = workspace.getConfiguration("lime").get("executable");
+		var executable = workspace.getConfiguration("hxp").get("executable");
 		if (executable == null)
 		{
-			executable = "lime";
+			executable = "hxp";
 		}
-		// naive check to see if it's a path, or multiple arguments such as "haxelib run lime"
+		// naive check to see if it's a path, or multiple arguments such as "haxelib run hxp"
 		if (FileSystem.exists(executable))
 		{
 			executable = '"' + executable + '"';
@@ -242,7 +192,7 @@ class Main
 
 	public function getProjectFile():String
 	{
-		var config = workspace.getConfiguration("lime");
+		var config = workspace.getConfiguration("hxp");
 
 		if (config.has("projectFile"))
 		{
@@ -259,24 +209,24 @@ class Main
 	public function getTarget():String
 	{
 		var defaultTarget = "html5";
-		var defaultTargetLabel = workspace.getConfiguration("lime").get("defaultTarget", "HTML5");
+		var defaultTargetLabel = workspace.getConfiguration("hxp").get("defaultTarget", "HTML5");
 		var defaultTargetItem = targetItems.find(function(item) return item.label == defaultTargetLabel);
 		if (defaultTargetItem != null)
 		{
 			defaultTarget = defaultTargetItem.target;
 		}
 
-		return context.workspaceState.get("lime.target", defaultTarget);
+		return context.workspaceState.get("hxp.target", defaultTarget);
 	}
 
 	public function getTargetFlags():String
 	{
-		return context.workspaceState.get("lime.additionalTargetFlags", "");
+		return context.workspaceState.get("hxp.additionalTargetFlags", "");
 	}
 
 	private function initialize():Void
 	{
-		// TODO: Populate target items and build configurations from Lime
+		// TODO: Populate target items and build configurations from HXP
 
 		targetItems = [
 			{
@@ -435,7 +385,7 @@ class Main
 
 		var target = getTarget();
 
-		// TODO: Detect Lime development build
+		// TODO: Detect HXP development build
 
 		if (target != "html5" && target != "flash")
 		{
@@ -449,32 +399,27 @@ class Main
 
 	private function refresh():Void
 	{
-		checkHasProjectFile();
-
-		if (hasProjectFile)
+		if (displayArgumentsProvider == null)
 		{
-			if (displayArgumentsProvider == null)
-			{
-				constructDisplayArgumentsProvider();
-			}
-
-			var oldLimeExecutable = limeExecutable;
-			limeExecutable = getExecutable();
-			var limeExecutableChanged = oldLimeExecutable != limeExecutable;
-
-			if (isProviderActive && (!initialized || limeExecutableChanged))
-			{
-				if (!initialized)
-				{
-					initialize();
-					construct();
-				}
-
-				updateDisplayArguments();
-			}
+			constructDisplayArgumentsProvider();
 		}
 
-		if (!hasProjectFile || !isProviderActive)
+		var oldHXPExecutable = hxpExecutable;
+		hxpExecutable = getExecutable();
+		var hxpExecutableChanged = oldHXPExecutable != hxpExecutable;
+
+		if (isProviderActive && (!initialized || hxpExecutableChanged))
+		{
+			if (!initialized)
+			{
+				initialize();
+				construct();
+			}
+
+			updateDisplayArguments();
+		}
+
+		if (!isProviderActive)
 		{
 			deconstruct();
 		}
@@ -492,37 +437,38 @@ class Main
 
 	public function setBuildConfigFlags(flags:String):Void
 	{
-		context.workspaceState.update("lime.buildConfigFlags", flags);
+		context.workspaceState.update("hxp.buildConfigFlags", flags);
 		updateStatusBarItems();
 		updateDisplayArguments();
 	}
 
 	public function setTarget(target:String):Void
 	{
-		context.workspaceState.update("lime.target", target);
+		context.workspaceState.update("hxp.target", target);
 		updateStatusBarItems();
 		updateDisplayArguments();
 	}
 
 	public function setTargetFlags(flags:String):Void
 	{
-		context.workspaceState.update("lime.additionalTargetFlags", flags);
+		context.workspaceState.update("hxp.additionalTargetFlags", flags);
 		updateStatusBarItems();
 		updateDisplayArguments();
 	}
 
 	private function updateDisplayArguments():Void
 	{
-		if (!hasProjectFile || !isProviderActive) return;
+		if (!isProviderActive) return;
 
-		var commandLine = limeExecutable + " " + getCommandArguments("display").join(" ");
+		var commandLine = hxpExecutable + " " + getCommandArguments("display").join(" ");
 		commandLine = StringTools.replace(commandLine, "-verbose", "");
 
-		ChildProcess.exec(commandLine, {cwd: workspace.workspaceFolders[0].uri.fsPath}, function(err, stdout:Buffer, stderror)
+		ChildProcess.exec(commandLine,
+			{cwd: workspace.workspaceFolders[0].uri.fsPath}, function(err, stdout:Buffer, stderror)
 		{
 			if (err != null && err.code != 0)
 			{
-				var message = 'Lime completion setup failed. Is the lime command available? Try running "lime setup" or changing the "lime.executable" setting.';
+				var message = 'HXP completion setup failed. Is the hxp command available? Try running "hxp setup" or changing the "hxp.executable" setting.';
 				var showFullErrorLabel = "Show Full Error";
 				window.showErrorMessage(message, showFullErrorLabel).then(function(selection)
 				{
@@ -542,34 +488,8 @@ class Main
 
 	private function updateStatusBarItems():Void
 	{
-		if (hasProjectFile && isProviderActive)
+		if (isProviderActive)
 		{
-			var target = getTarget();
-
-			for (i in 0...targetItems.length)
-			{
-				var item = targetItems[i];
-				if (item.target == target)
-				{
-					selectTargetItem.text = item.label;
-					selectTargetItem.show();
-					break;
-				}
-			}
-
-			var buildConfigFlags = getBuildConfigFlags();
-
-			for (i in 0...buildConfigItems.length)
-			{
-				var item = buildConfigItems[i];
-				if (item.flags == buildConfigFlags)
-				{
-					selectBuildConfigItem.text = item.label;
-					selectBuildConfigItem.show();
-					break;
-				}
-			}
-
 			editTargetFlagsItem.text = "$(list-unordered)";
 			editTargetFlagsItem.tooltip = "Edit Target Flags";
 			var flags = getTargetFlags();
@@ -581,8 +501,6 @@ class Main
 		}
 		else
 		{
-			selectTargetItem.hide();
-			selectBuildConfigItem.hide();
 			editTargetFlagsItem.hide();
 		}
 	}
@@ -601,39 +519,13 @@ class Main
 		});
 	}
 
-	private function selectBuildConfigItem_onCommand():Void
-	{
-		var items = buildConfigItems;
-		items.moveToStart(function(item) return item.flags == getBuildConfigFlags());
-		window.showQuickPick(items, {matchOnDescription: true, placeHolder: "Select Build Configuration"}).then(function(choice:BuildConfigItem)
-		{
-			// TODO: Update if target flags include a build configuration?
-
-			if (choice == null || choice.flags == getBuildConfigFlags()) return;
-
-			setBuildConfigFlags(choice.flags);
-		});
-	}
-
-	private function selectTargetItem_onCommand():Void
-	{
-		var items = targetItems;
-		items.moveToStart(function(item) return item.target == getTarget());
-		window.showQuickPick(items, {matchOnDescription: true, placeHolder: "Select Target"}).then(function(choice:TargetItem)
-		{
-			if (choice == null || choice.target == getTarget()) return;
-
-			setTarget(choice.target);
-		});
-	}
-
 	private function workspace_onDidChangeConfiguration(_):Void
 	{
 		refresh();
 	}
 }
 
-private typedef LimeTaskDefinition =
+private typedef HXPTaskDefinition =
 {
 	> TaskDefinition,
 	var command:String;

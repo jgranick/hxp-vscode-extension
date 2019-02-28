@@ -1,8 +1,8 @@
-package lime.extension;
+package hxp.extension;
 
-class LimeDisplayArgumentsProvider
+class HXPDisplayArgumentsProvider
 {
-	public var description(default, never):String = "Project using Lime/OpenFL command-line tools";
+	public var description(default, never):String = "Execute *.hx and *.hxp script files";
 
 	private var activationChangedCallback:Bool->Void;
 	private var api:Vshaxe;
